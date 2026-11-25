@@ -5,9 +5,80 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { lectores, recolectar } = require('../fuentes');
+const { normalizarProyecto } = require('../fuentes/comun');
 const ahora = Date.parse('2026-11-25T20:00:00Z');
 const iso = delta => new Date(ahora + delta).toISOString();
 const secreto = 'CONTENIDO_PRIVADO_INVENTADO_NO_EXPORTAR';
+
+test('Proyectos: Windows unifica separadores y unidad; Linux y macOS conservan mayúsculas', () => {
+  const opciones = { plataforma: 'win32', temporal: 'D:\\Temp' };
+  for (const ruta of ['C:/Users/x', 'c:\\Users\\x', 'C:\\Users\\x', 'c:/Users/x/./']) {
+    assert.equal(normalizarProyecto(ruta, 'D:\\hogar', opciones), 'C:\\Users\\x');
+  }
+  assert.equal(normalizarProyecto('c:/', 'D:\\hogar', opciones), 'C:\\');
+  assert.equal(normalizarProyecto('//servidor/recurso/Repo/', 'D:\\hogar', opciones), '\\\\servidor\\recurso\\Repo');
+  for (const plataforma of ['linux', 'darwin']) {
+    for (const ruta of ['/repos/MiRepo', '/repos/mirepo']) {
+      assert.equal(normalizarProyecto(ruta, '/home/x', { plataforma, temporal: '/tmp' }), ruta);
+    }
+  }
+  for (const ruta of [null, undefined, '']) assert.equal(normalizarProyecto(ruta, 'D:\\hogar', opciones), null);
+});
+
+test('Proyectos: worktrees con repos e IDs de varios guiones apuntan al repo hermano', () => {
+  for (const plataforma of ['win32', 'linux', 'darwin']) {
+    const p = plataforma === 'win32' ? path.win32 : path.posix;
+    const padre = plataforma === 'win32' ? 'D:\\a' : '/repos';
+    const home = plataforma === 'win32' ? 'C:\\Users\\x' : '/home/x';
+    const opciones = { plataforma, temporal: plataforma === 'win32' ? 'D:\\Temp' : '/tmp' };
+    for (const id of ['T-2', 'CX-12', 'REV-3', 'T', '12']) {
+      const ruta = p.join(padre, `wt-telemetria-ia-${id}`);
+      assert.equal(normalizarProyecto(ruta, home, opciones), p.join(padre, 'telemetria-ia'));
+    }
+    assert.equal(normalizarProyecto(p.join(padre, 'wt-mi-API-T-2', 'src'), home, opciones), p.join(padre, 'mi-API', 'src'));
+    for (const carpeta of ['wt-telemetria-ia-desconocido', 'wt-repo-REV-x', 'telemetria-ia-T-2', 'wt-repo']) {
+      const ruta = p.join(padre, carpeta);
+      assert.equal(normalizarProyecto(ruta, home, opciones), ruta);
+    }
+  }
+});
+
+test('Proyectos: agrupa temporales y consultas con límites de carpeta y prioridad sobre home', () => {
+  for (const plataforma of ['win32', 'linux', 'darwin']) {
+    const p = plataforma === 'win32' ? path.win32 : path.posix;
+    const home = plataforma === 'win32' ? 'C:\\Users\\x' : '/home/x';
+    const temporal = plataforma === 'win32' ? 'D:\\Temp' : '/tmp';
+    const opciones = { plataforma, temporal };
+    for (const base of [temporal, p.join(home, 'AppData', 'Local', 'Temp')]) {
+      assert.equal(normalizarProyecto(base, home, opciones), '(carpetas temporales)');
+      assert.equal(normalizarProyecto(p.join(base, 'otra', 'proyecto'), home, opciones), '(carpetas temporales)');
+      assert.equal(normalizarProyecto(p.join(base, 'orq-consulta-123', 'repo'), home, opciones), '(consultas del orquestador)');
+      assert.equal(normalizarProyecto(p.join(base, 'wt-repo-T-2'), home, opciones), '(carpetas temporales)');
+    }
+    const fuera = p.join(`${temporal}-extra`, 'orq-consulta-123');
+    assert.equal(normalizarProyecto(fuera, home, opciones), fuera);
+    const fueraHome = p.join(home, 'AppData', 'Local', 'Temp-extra', 'repo');
+    assert.equal(normalizarProyecto(fueraHome, home, opciones), p.join('~', 'AppData', 'Local', 'Temp-extra', 'repo'));
+  }
+  assert.equal(normalizarProyecto('c:/users/X/appdata/local/TEMP/ORQ-CONSULTA-1', 'C:\\Users\\x',
+    { plataforma: 'win32', temporal: 'D:\\Temp' }), '(consultas del orquestador)');
+});
+
+test('Proyectos: home se muestra como ~ sin confundir carpetas con el mismo prefijo', () => {
+  const opciones = { plataforma: 'win32', temporal: 'D:\\Temp' };
+  const home = 'C:\\Users\\x';
+  assert.equal(normalizarProyecto('c:/Users/x/', home, opciones), '~');
+  assert.equal(normalizarProyecto('c:/users/X/.claude/skills/carreras-campus', home, opciones), '~\\.claude\\skills\\carreras-campus');
+  assert.equal(normalizarProyecto('C:/Users/x/wt-telemetria-ia-T-2', home, opciones), '~\\telemetria-ia');
+  assert.equal(normalizarProyecto('C:/Users/x2/repo', home, opciones), 'C:\\Users\\x2\\repo');
+  for (const plataforma of ['linux', 'darwin']) {
+    const opcionesPosix = { plataforma, temporal: '/tmp' };
+    assert.equal(normalizarProyecto('/home/x', '/home/x', opcionesPosix), '~');
+    assert.equal(normalizarProyecto('/home/x/.claude/skills/carreras-campus', '/home/x', opcionesPosix), '~/.claude/skills/carreras-campus');
+    assert.equal(normalizarProyecto('/home/X/Repo', '/home/x', opcionesPosix), '/home/X/Repo');
+    assert.equal(normalizarProyecto('/home/x2/Repo', '/home/x', opcionesPosix), '/home/x2/Repo');
+  }
+});
 
 async function entorno(t) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'telemetria-fuentes-'));
@@ -33,6 +104,48 @@ async function entorno(t) {
   return { home, escribir, leer };
 }
 
+test('Todos los lectores entregan proyectos normalizados y el agregado reúne sus variantes', async t => {
+  const { home, escribir, leer } = await entorno(t);
+  const proyecto = path.join(home, 'AppData', 'Local', 'Temp', 'orq-consulta-123');
+  await escribir('.claude/projects/proyecto/s.jsonl', [{ type: 'assistant', timestamp: iso(0), cwd: proyecto,
+    sessionId: 'claude', message: { id: 'm', usage: { input_tokens: 1 } } }]);
+  await escribir('.codex/sessions/rollout-proyecto.jsonl', [
+    { type: 'session_meta', payload: { id: 'codex', cwd: path.join(proyecto, 'wt-repo-T-2') } },
+    { type: 'event_msg', timestamp: iso(0), payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 2 } } } },
+  ]);
+  await escribir('.gemini/tmp/proyecto/.project_root', path.join(proyecto, 'gemini'));
+  await escribir('.gemini/tmp/proyecto/chats/session-proyecto.jsonl', [
+    { sessionId: 'gemini' }, { id: 'g', type: 'gemini', timestamp: iso(0), tokens: { input: 3 } },
+  ]);
+  await escribir('.gemini/antigravity/brain/proyecto/.system_generated/logs/transcript_full.jsonl', [
+    { step_index: 0, created_at: iso(0), input_tokens: 4 },
+  ]);
+  await escribir('.local/share/orquestar-codex/consumo.jsonl', ['qwen', 'qoder', 'mcode'].map(agente => ({
+    fecha: iso(0), repo: path.join(proyecto, agente), id: 't', agente, entrada: 5,
+  })));
+  const ruta = await escribir('.local/share/opencode/opencode.db', '');
+  const { DatabaseSync } = require('node:sqlite');
+  const db = new DatabaseSync(ruta);
+  try {
+    db.exec('CREATE TABLE message(id TEXT, session_id TEXT, time_created INTEGER, data TEXT); CREATE TABLE session(id TEXT, directory TEXT);');
+    db.prepare('INSERT INTO session VALUES (?, ?)').run('opencode', path.join(proyecto, 'opencode'));
+    db.prepare('INSERT INTO message VALUES (?, ?, ?, ?)').run('o', 'opencode', ahora,
+      JSON.stringify({ role: 'assistant', tokens: { input: 6 } }));
+  } finally { db.close(); }
+  await fs.utimes(ruta, new Date(ahora), new Date(ahora));
+  for (const lector of lectores) {
+    const resultado = await leer(lector.nombre);
+    assert.equal(resultado.aviso, null, lector.nombre);
+    assert.ok(resultado.registros.length > 0, lector.nombre);
+    for (const r of resultado.registros) {
+      assert.equal(r.proyecto, lector.nombre === 'Antigravity' ? null : '(consultas del orquestador)', r.herramienta);
+    }
+  }
+  const agregado = await recolectar({ home, dias: 1, ahora });
+  assert.deepEqual(agregado.proyectos, [{ proyecto: '(consultas del orquestador)', entrada: 27, salida: 0, mensajes: 7 }]);
+  assert.equal(agregado.totales.mensajes, 8);
+});
+
 test('Claude deduplica ids, suma caché y omite sintéticos, fechas y archivos antiguos', async t => {
   const { escribir, leer } = await entorno(t);
   const mensaje = { type: 'assistant', timestamp: iso(-1000), sessionId: 'c1', cwd: '/repo', costUSD: 0.25,
@@ -48,7 +161,7 @@ test('Claude deduplica ids, suma caché y omite sintéticos, fechas y archivos a
   const resultado = await leer('Claude Code');
   assert.equal(resultado.registros.length, 2);
   assert.deepEqual(resultado.registros[0], { herramienta: 'Claude Code', proveedor: 'Anthropic', modelo: 'claude-test',
-    fecha: ahora - 1000, entrada: 20, cache: 6, salida: 3, razonamiento: 2, costo: 0.25, sesion: 'c1', proyecto: '/repo' });
+    fecha: ahora - 1000, entrada: 20, cache: 6, salida: 3, razonamiento: 2, costo: 0.25, sesion: 'c1', proyecto: path.normalize('/repo') });
   assert.match(resultado.aviso, /ilegibles/);
   assert.ok(!JSON.stringify(resultado).includes(secreto));
 });
@@ -70,7 +183,7 @@ test('Codex conserva la base anterior al periodo, cambia modelo y toma la últim
   const r = await leer('Codex');
   assert.equal(r.aviso, null);
   assert.deepEqual(r.registros.map(d => [d.modelo, d.entrada, d.cache, d.salida, d.razonamiento, d.proyecto]),
-    [['modelo-a', 40, 20, 10, 5, '/a'], ['modelo-b', 60, 30, 10, 5, '/b']]);
+    [['modelo-a', 40, 20, 10, 5, path.normalize('/a')], ['modelo-b', 60, 30, 10, 5, path.normalize('/b')]]);
   assert.deepEqual(r.limites, [{ herramienta: 'Codex', plan: 'team', ventanas: [
     { nombre: '5 h', usado: 24, renueva: iso(60000) }, { nombre: 'semanal', usado: 7, renueva: iso(86400000) },
   ] }]);
@@ -101,7 +214,7 @@ test('OpenCode consulta metadatos, filtra en SQL, suma costo y no exporta creden
   assert.equal(r.aviso, null);
   assert.equal(r.registros.length, 2);
   assert.deepEqual(r.registros.map(d => [d.proveedor, d.entrada, d.cache, d.salida, d.razonamiento, d.costo, d.proyecto]),
-    [['OpenCode Zen', 17, 3, 5, 2, 0.15, '/opencode'], ['otro', 17, 3, 5, 2, 0, '/opencode']]);
+    [['OpenCode Zen', 17, 3, 5, 2, 0.15, path.normalize('/opencode')], ['otro', 17, 3, 5, 2, 0, path.normalize('/opencode')]]);
   const a = await recolectar({ home, dias: 1, ahora });
   assert.equal(a.totales.costo, 0.15);
   assert.ok(!JSON.stringify(a).includes(secreto));
@@ -123,7 +236,7 @@ test('Gemini conserva la última actualización por id y admite JSON antiguo y p
   assert.equal(actual.entrada, 30);
   assert.equal(actual.cache, 5);
   assert.equal(actual.razonamiento, 2);
-  assert.equal(actual.proyecto, '/gemini');
+  assert.equal(actual.proyecto, path.normalize('/gemini'));
   assert.equal(r.registros.find(d => d.sesion === 'g-antiguo').proyecto, null);
   assert.ok(!JSON.stringify(r).includes(secreto));
 });
