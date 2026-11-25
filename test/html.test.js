@@ -53,6 +53,36 @@ function ejemplo() {
   };
 }
 
+function ejemploConModelos() {
+  const datos = ejemplo();
+  datos.filtro = { proyecto: '<b>ucva&s</b>' };
+  datos.modelos = [
+    {
+      modelo: 'claude-opus-5-5', herramientas: ['Claude Code', 'Antigravity'],
+      entrada: 53063, cache: 34083, salida: 289, razonamiento: 161, costo: null,
+      mensajes: 5, sesiones: 2,
+      efforts: [
+        { effort: 'high', entrada: 43063, cache: 28083, salida: 200, razonamiento: 120, costo: null, mensajes: 4 },
+        { effort: null, entrada: 10000, cache: 6000, salida: 89, razonamiento: 41, costo: null, mensajes: 1 },
+      ],
+    },
+    {
+      modelo: 'gpt-5-codex', herramientas: ['Codex'],
+      entrada: 22000, cache: 8000, salida: 1800, razonamiento: 200, costo: 1.2,
+      mensajes: 3, sesiones: 1,
+      efforts: [{ effort: null, entrada: 22000, cache: 8000, salida: 1800, razonamiento: 200, costo: 1.2, mensajes: 3 }],
+    },
+  ];
+  datos.proyectos[0].modelos = [
+    { modelo: 'claude-opus-5-5', effort: 'high', entrada: 43063, salida: 200, mensajes: 4 },
+    { modelo: 'claude-opus-5-5', effort: null, entrada: 10000, salida: 89, mensajes: 1 },
+  ];
+  datos.proyectos[1].modelos = [
+    { modelo: 'gpt-5-codex', effort: null, entrada: 22000, salida: 1800, mensajes: 3 },
+  ];
+  return datos;
+}
+
 test('HTML completo, en español y sin recursos externos', () => {
   const html = generarHtml(ejemplo());
   assert.ok(html.startsWith('<!doctype html>'));
@@ -171,4 +201,46 @@ test('filas de modelo con sangrado CSS y sin flecha', () => {
   assert.ok(!html.includes('↳'));
   assert.match(html, /\.fila-modelo \.modelo \{ padding-left: 1\.4rem;[^}]*white-space: nowrap; \}/);
   assert.match(html, /<tr class="fila-modelo"><th scope="row"><\/th><td>—<\/td><td class="modelo">/);
+});
+
+test('filtro de proyecto, modelos con effort y modelos por proyecto', () => {
+  const html = generarHtml(ejemploConModelos());
+  assert.ok(html.includes('Proyecto: &lt;b&gt;ucva&amp;s&lt;/b&gt;'));
+  assert.ok(html.indexOf('Por modelo y effort') > html.indexOf('Porcentaje por herramienta'));
+  assert.ok(html.indexOf('Por modelo y effort') < html.indexOf('Reparto por herramienta'));
+  for (const columna of ['Herramientas', 'Sesiones', 'Effort']) {
+    assert.ok(html.includes(`${columna}</th>`), `falta columna ${columna}`);
+  }
+  assert.ok(html.includes('Claude Code, Antigravity'));
+  assert.match(html, /aria-label="claude-opus-5-5: \d+ %"/);
+  assert.match(html, /<tr class="fila-modelo"><th scope="row" class="modelo">high<\/th><td>—<\/td><td class="num">—<\/td>/);
+  assert.match(html, /<tr class="fila-modelo"><th scope="row" class="modelo">sin dato<\/th>/);
+  assert.match(html, /<tr class="fila-modelo"><th scope="row"><\/th><td class="modelo">claude-opus-5-5<\/td><td>high<\/td>/);
+  assert.match(html, /<tr class="fila-modelo"><th scope="row"><\/th><td class="modelo">gpt-5-codex<\/td><td>—<\/td>/);
+  assert.equal((html.match(/class="scroll"><table/g) ?? []).length, 3);
+  assert.ok(!html.includes('<b>ucva&s</b>'));
+});
+
+test('datos viejos sin modelos ni filtro siguen funcionando', () => {
+  const datos = ejemplo();
+  const html = generarHtml(datos);
+  assert.ok(!html.includes('Por modelo y effort'));
+  assert.ok(!html.includes('Proyecto:'));
+  assert.equal((html.match(/class="scroll"><table/g) ?? []).length, 2);
+  for (const p of datos.proyectos) delete p.modelos;
+  assert.ok(generarHtml(datos).includes('Proyectos'));
+});
+
+test('escapa filtro, herramientas de modelo, effort y modelos de proyecto', () => {
+  const datos = ejemploConModelos();
+  datos.filtro.proyecto = '<img src=x onerror=1>';
+  datos.modelos[0].herramientas = ['<b>x</b>'];
+  datos.modelos[0].efforts[0].effort = '<i>y</i>';
+  datos.proyectos[0].modelos[0].modelo = '<img src=z onerror=2>';
+  const html = generarHtml(datos);
+  assert.ok(!html.includes('<img') && !html.includes('<b>x</b>') && !html.includes('<i>y</i>'));
+  assert.ok(html.includes('&lt;img src=x onerror=1&gt;'));
+  assert.ok(html.includes('&lt;b&gt;x&lt;/b&gt;'));
+  assert.ok(html.includes('&lt;i&gt;y&lt;/i&gt;'));
+  assert.ok(html.includes('&lt;img src=z onerror=2&gt;'));
 });
