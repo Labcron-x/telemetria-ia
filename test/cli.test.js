@@ -26,9 +26,15 @@ test('CLI sin datos, JSON parseable, ayuda y argumentos inválidos', async t => 
   const json = ejecutar(['json', 'todo']);
   assert.equal(json.status, 0);
   assert.equal(JSON.parse(json.stdout).periodo.dias, null);
-  assert.equal(ejecutar(['--ayuda']).status, 0);
+  const ayuda = ejecutar(['--ayuda']);
+  assert.equal(ayuda.status, 0);
+  for (const opcion of ['--por', '--proyecto', 'modelo:', 'effort:', 'herramienta:', 'dia:', 'proyecto:']) {
+    assert.ok(ayuda.stdout.includes(opcion));
+  }
   for (const args of [['0'], ['-1'], ['1.5'], ['foo'], ['json', '7', 'extra'], ['--abrir'],
-    ['html', '--salida'], ['html', '--abrir', '--abrir'], ['--ayuda', 'extra'], ['999999999999999999']]) {
+    ['html', '--salida'], ['html', '--abrir', '--abrir'], ['--ayuda', 'extra'], ['999999999999999999'],
+    ['--por'], ['--proyecto'], ['--por', '--proyecto', 'x'], ['--proyecto', '--por', 'modelo'],
+    ['--por', 'modelo', '--por', 'dia'], ['--proyecto', 'a', '--proyecto', 'b']]) {
     assert.equal(ejecutar(args).status, 2, args.join(' '));
   }
 });
@@ -37,7 +43,7 @@ test('CLI presenta secciones, filtra periodo y no imprime mensajes', async t => 
   const { home, ejecutar } = await entorno(t);
   const directorio = path.join(home, '.claude/projects/prueba');
   await fs.mkdir(directorio, { recursive: true });
-  const mensaje = { type: 'assistant', timestamp: new Date().toISOString(), sessionId: 'c', cwd: '/proyecto',
+  const mensaje = { type: 'assistant', timestamp: new Date().toISOString(), sessionId: 'c', cwd: '/proyecto', perTurnEffort: 'xhigh',
     message: { id: 'm', model: 'modelo-test', content: 'MENSAJE_PRIVADO_INVENTADO',
       usage: { input_tokens: 1200, cache_read_input_tokens: 10, output_tokens: 4 } } };
   await fs.writeFile(path.join(directorio, 's.jsonl'), [mensaje,
@@ -52,13 +58,69 @@ test('CLI presenta secciones, filtra periodo y no imprime mensajes', async t => 
     } } }));
   const terminal = ejecutar(['1']);
   assert.equal(terminal.status, 0);
-  for (const seccion of ['Por herramienta', 'Por modelo', 'Por día', 'Proyectos', 'Avisos']) assert.ok(terminal.stdout.includes(seccion));
+  const secciones = ['Por modelo', 'Por modelo + effort', 'Por herramienta', 'Por herramienta + modelo', 'Por día',
+    'Proyectos (10 con más entrada)', 'Límites', 'Avisos'];
+  const encabezados = terminal.stdout.split('\n').filter(l => secciones.includes(l));
+  assert.deepEqual(encabezados, secciones);
+  assert.match(terminal.stdout, /xhigh/);
   assert.match(terminal.stdout, /1\.2k/);
   assert.match(terminal.stdout, /—/);
   assert.match(terminal.stdout, /Codex \(plan team\): 24 % de la ventana de 5 h \(se renueva .+\) · 7 % semanal \(se renueva .+\)/);
   assert.ok(!terminal.stdout.includes('MENSAJE_PRIVADO_INVENTADO'));
   assert.equal(JSON.parse(ejecutar(['json', '1']).stdout).totales.mensajes, 1);
   assert.equal(JSON.parse(ejecutar(['json', 'todo']).stdout).totales.mensajes, 2);
+  for (const [vista, esperadas] of [
+    ['modelo', ['Por modelo']], ['effort', ['Por modelo + effort']],
+    ['herramienta', ['Por herramienta', 'Por herramienta + modelo']], ['dia', ['Por día']],
+    ['proyecto', ['Proyectos (10 con más entrada)']],
+  ]) {
+    const salida = ejecutar(['1', '--por', vista]);
+    assert.equal(salida.status, 0, salida.stderr);
+    assert.deepEqual(salida.stdout.split('\n').filter(l => secciones.includes(l)), [...esperadas, 'Límites', 'Avisos'], vista);
+    assert.ok(!salida.stdout.includes('MENSAJE_PRIVADO_INVENTADO'));
+  }
+  for (const modo of [[], ['json'], ['html']]) {
+    const invalida = ejecutar([...modo, '--por', 'invalida']);
+    assert.equal(invalida.status, 2);
+    assert.match(invalida.stderr, /Vistas válidas: modelo, effort, herramienta, dia, proyecto/);
+  }
+});
+
+test('CLI filtra proyecto antes de agregar en terminal, JSON y HTML sin distinguir mayúsculas', async t => {
+  const { home, ejecutar } = await entorno(t);
+  const directorio = path.join(home, '.claude/projects/filtro');
+  await fs.mkdir(directorio, { recursive: true });
+  await fs.writeFile(path.join(directorio, 's.jsonl'), [
+    ['/Repo-Elegido', 'incluido', 10], ['/otro', 'excluido', 100], [null, 'sin-proyecto', 1000],
+  ].map(([cwd, modelo, entrada]) => JSON.stringify({ type: 'assistant', timestamp: new Date().toISOString(),
+    cwd, sessionId: modelo, effort: 'high', message: { id: modelo, model: modelo,
+      usage: { input_tokens: entrada, cache_read_input_tokens: 2, output_tokens: 3 } } })).join('\n'));
+  const args = ['todo', '--por', 'modelo', '--proyecto', 'REPO-elegido'];
+  const json = ejecutar(['json', ...args]);
+  assert.equal(json.status, 0, json.stderr);
+  const a = JSON.parse(json.stdout);
+  assert.deepEqual(a.filtro, { proyecto: 'REPO-elegido' });
+  assert.equal(a.totales.entrada, 12);
+  assert.equal(a.totales.mensajes, 1);
+  assert.equal(a.totales.sesiones, 1);
+  assert.deepEqual(a.modelos.map(m => m.modelo), ['incluido']);
+  assert.deepEqual(a.herramientas[0].modelos.map(m => m.modelo), ['incluido']);
+  assert.deepEqual(a.proyectos[0].modelos, [{ modelo: 'incluido', effort: 'high', entrada: 12, salida: 3, mensajes: 1 }]);
+  assert.equal(a.dias[0].herramientas['Claude Code'].entrada, 12);
+  const terminal = ejecutar(args);
+  assert.equal(terminal.status, 0, terminal.stderr);
+  assert.match(terminal.stdout, /· proyecto: REPO-elegido/);
+  assert.match(terminal.stdout, /incluido/);
+  assert.ok(!terminal.stdout.includes('excluido') && !terminal.stdout.includes('sin-proyecto'));
+  const vacio = JSON.parse(ejecutar(['json', '--proyecto', 'no-existe']).stdout);
+  assert.deepEqual(vacio.filtro, { proyecto: 'no-existe' });
+  assert.equal(vacio.totales.mensajes, 0);
+  assert.deepEqual(vacio.modelos, []);
+  const html = ejecutar(['html', ...args]);
+  assert.equal(html.status, 0, html.stderr);
+  const contenido = await fs.readFile(html.stdout.trim(), 'utf8');
+  assert.ok(contenido.includes('incluido'));
+  assert.ok(!contenido.includes('excluido') && !contenido.includes('sin-proyecto'));
 });
 
 test('CLI HTML respeta la disponibilidad del generador y las rutas de salida', async t => {

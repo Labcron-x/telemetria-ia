@@ -27,7 +27,8 @@ module.exports = lector('OpenCode', async (ctx, home) => {
     // No se selecciona data: SQLite extrae únicamente los metadatos permitidos.
     const consulta = db.prepare(`SELECT m.id, m.session_id, m.time_created, s.directory,
       json_extract(m.data, '$.tokens') AS tokens, json_extract(m.data, '$.cost') AS cost,
-      json_extract(m.data, '$.modelID') AS model, json_extract(m.data, '$.providerID') AS provider
+      json_extract(m.data, '$.modelID') AS model, json_extract(m.data, '$.providerID') AS provider,
+      json_extract(m.data, '$.variant') AS effort
       FROM message m LEFT JOIN session s ON s.id = m.session_id
       WHERE m.time_created >= ? AND CASE WHEN json_valid(m.data)
         THEN json_extract(m.data, '$.role') = 'assistant' ELSE 0 END`);
@@ -37,7 +38,7 @@ module.exports = lector('OpenCode', async (ctx, home) => {
         const entrada = n(t.input) + n(t.cache?.read) + n(t.cache?.write);
         if (!(entrada + n(t.output) + n(t.reasoning) > 0)) continue;
         ctx.registros.push(registro('OpenCode', fila.provider === 'opencode' ? 'OpenCode Zen' : fila.provider || '?', {
-          modelo: fila.model || '?', fecha: fila.time_created, entrada, cache: n(t.cache?.read),
+          modelo: fila.model || '?', effort: fila.effort ?? null, fecha: fila.time_created, entrada, cache: n(t.cache?.read),
           salida: n(t.output), razonamiento: n(t.reasoning), costo: costo(fila.cost),
           sesion: fila.session_id, proyecto: fila.directory || null,
         }));

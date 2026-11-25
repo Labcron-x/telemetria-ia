@@ -19,7 +19,9 @@ module.exports = lector('Antigravity', async (ctx, home) => {
         const entrada = n(dato.input_tokens) + n(dato.cache_read_tokens);
         if (!(entrada + n(dato.output_tokens) + n(dato.thinking_tokens) > 0)) return;
         vistos.add(clave);
-        ctx.registros.push(registro('Antigravity', 'Google (Antigravity)', { modelo: dato.model || '?',
+        const modelo = dato.model || '?';
+        ctx.registros.push(registro('Antigravity', 'Google (Antigravity)', { modelo,
+          effort: modelo.match(/-(minimal|low|medium|high|xhigh)$/)?.[1] ?? null,
           fecha: instante, entrada, cache: n(dato.cache_read_tokens), salida: n(dato.output_tokens),
           razonamiento: n(dato.thinking_tokens), sesion }));
       });
