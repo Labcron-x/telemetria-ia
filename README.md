@@ -40,6 +40,25 @@ git -C <carpeta de telemetria-ia> pull     # actualizar (con npm link no hay que
 npm uninstall -g telemetria-ia             # quitar el comando; luego borra la carpeta si quieres
 ```
 
+### Usarlo como skill (preguntarle a la IA)
+
+Puedes preguntarle a Claude Code o a Codex desde cualquier proyecto, sin buscar la carpeta de telemetria-ia.
+Desde la carpeta donde lo clonaste, instala la skill:
+
+```bash
+node instalar-skill.js             # instala donde ya exista la carpeta de Claude Code o Codex
+node instalar-skill.js --claude    # solo Claude Code; crea su carpeta si hace falta
+node instalar-skill.js --codex     # solo Codex; crea su carpeta si hace falta
+node instalar-skill.js --quitar    # quita la skill de ambos; se puede combinar con --claude o --codex
+```
+
+Después de `git pull`, vuelve a correr `node instalar-skill.js` para actualizarla. Si Claude Code o Codex estaban
+abiertos, abre una sesión nueva. Usa `/telemetria` en Claude Code, `$telemetria` en Codex, o pregunta
+“¿cuánto consumí esta semana?”, “¿qué modelo uso más?” o “¿cuánto consumió el proyecto X?”.
+
+Así **sí** se gastan unos pocos tokens: la IA corre el comando y lee una vista corta. Correr el comando directamente
+en la terminal sigue siendo gratis, sin consumo de tokens.
+
 ## Usar
 
 | Quiero saber… | Comando |
@@ -141,8 +160,8 @@ carpeta base (sirve para pruebas).
 
 ## Preguntas frecuentes
 
-**¿El reporte consume tokens? No:** `telemetria` es un programa local que solo lee archivos; ni la terminal ni el HTML
-usan IA. Solo gastarías tokens si le pides a una IA que lo corra y lea la salida.
+**¿El reporte consume tokens?** En la terminal y el HTML, no: `telemetria` es un programa local que solo lee archivos.
+Si lo pides a la IA mediante la skill, sí gasta unos pocos tokens: la IA corre el comando y lee una vista corta.
 
 **¿Tengo que correrlo dentro de un proyecto? No.** Mide toda la PC desde cualquier carpeta; para uno solo, usa
 `--proyecto` (ver [arriba](#tengo-que-estar-en-la-carpeta-del-proyecto)).
