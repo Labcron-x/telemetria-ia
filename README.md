@@ -8,49 +8,92 @@ Lee solo los historiales que cada herramienta ya guarda en tu PC. No necesita cu
 con o sin orquestador ([claude-orquestador](https://github.com/NemiasVasquez/claude-orquestador),
 [orquestar-codex](https://github.com/Labcron-x/orquestar-codex)).
 
-## Instalar
+## Inicio rápido
 
-Requisito: Node.js 22.13 o más nuevo. No tiene dependencias.
+Requisito: Node.js 22.13 o más nuevo (`node -v`). No tiene dependencias.
 
 ```bash
-git clone https://github.com/Labcron-x/telemetria-ia.git
+git clone https://github.com/Labcron-x/telemetria-ia.git   # en cualquier carpeta
 cd telemetria-ia
-npm link            # deja el comando "telemetria" disponible en cualquier carpeta (opcional)
+npm link                                                   # una sola vez: crea el comando "telemetria"
+telemetria                                                 # tu consumo de los últimos 7 días
+telemetria html --abrir                                    # lo mismo con gráficos, en el navegador
 ```
 
-Sin `npm link`, usa `node bin/telemetria.js` en lugar de `telemetria`.
+`npm link` deja el comando `telemetria` disponible en cualquier carpeta y terminal (PowerShell, CMD o Git Bash).
+Si no quieres usarlo, llama al archivo con su ruta completa: `node D:uta	elemetria-iain	elemetria.js`.
+
+### ¿Tengo que estar en la carpeta del proyecto?
+
+**No.** `telemetria` no mira la carpeta donde estás: lee los historiales de tu usuario (`~/.claude`, `~/.codex`,
+`~/.local/share/opencode`, `~/.gemini`), así que desde cualquier carpeta mide **todo** el consumo de la PC, de todos
+tus proyectos.
+
+- Para ver un solo proyecto no hace falta entrar en él: usa `--proyecto <parte del nombre>`, por ejemplo
+  `telemetria --proyecto ucvmas`.
+- Tampoco hace falta tener abierto Claude, Codex ni otro programa: lee lo que ya quedó guardado.
+
+### Actualizar o quitar
+
+```bash
+git -C <carpeta de telemetria-ia> pull     # actualizar (con npm link no hay que reinstalar)
+npm uninstall -g telemetria-ia             # quitar el comando; luego borra la carpeta si quieres
+```
 
 ## Usar
 
-| Comando | Qué hace |
+| Quiero saber… | Comando |
 |---|---|
-| `telemetria` | Tablas en la terminal de los últimos 7 días |
-| `telemetria 30` / `telemetria todo` | Otro periodo (días) o todo el historial |
-| `telemetria 30 --por modelo` | Solo el consumo por modelo; vistas: `modelo`, `effort`, `herramienta`, `dia`, `proyecto` |
-| `telemetria --por effort --proyecto mi-repo` | Consumo por modelo y effort, solo de proyectos que contienen `mi-repo` (sin distinguir mayúsculas) |
-| `telemetria html --abrir` | Reporte con gráficos en el navegador (`~/.cache/telemetria-ia/reporte.html`; `--salida <ruta>` lo cambia) |
-| `telemetria json` | Los mismos datos en JSON, para otros programas ([formato](docs/datos.md)) |
-| `telemetria json todo --proyecto mi-repo` / `telemetria html 30 --proyecto mi-repo` | Filtra también el JSON o el HTML por proyecto |
+| Cuánto consumí esta semana (todo) | `telemetria` |
+| Cuánto consumí hoy / en el mes / desde siempre | `telemetria 1` / `telemetria 30` / `telemetria todo` |
+| Qué modelo uso más | `telemetria --por modelo` |
+| Con qué effort trabaja cada modelo | `telemetria --por effort` |
+| Cuánto consume cada herramienta (Claude Code, Codex, OpenCode…) | `telemetria --por herramienta` |
+| Cómo va día a día | `telemetria --por dia` |
+| Qué proyectos consumen más y con qué modelo | `telemetria --por proyecto` |
+| Cuánto consumió un proyecto | `telemetria --proyecto ucvmas` |
+| Verlo con gráficos | `telemetria html --abrir` |
+| Cuánto me queda del límite de ChatGPT | sale al final de cualquier comando, en **Límites** |
+| Pasar los datos a otro programa | `telemetria json` ([formato](docs/datos.md)) |
 
-Sintaxis: `telemetria [días|todo] [--por <vista>] [--proyecto <texto>]`, también con `json` o `html` antes del periodo.
-`--por` elige la sección de terminal; JSON y HTML conservan el reporte completo del periodo y proyecto elegidos.
-Consulta `telemetria --ayuda` para ver las opciones.
+Las opciones se combinan: `telemetria 30 --por modelo --proyecto ucvmas` o `telemetria html todo --proyecto ucvmas --abrir`.
+Sintaxis completa: `telemetria [json|html] [días|todo] [--por <vista>] [--proyecto <texto>]`, y para `html` además
+`--salida <ruta>` (por defecto `~/.cache/telemetria-ia/reporte.html`) y `--abrir`. `telemetria --ayuda` lo resume.
 
-En la terminal sale:
+Ejemplo de `telemetria --por modelo` (cifras inventadas):
 
-1. **Por modelo:** suma el mismo modelo entre herramientas; muestra herramientas, sesiones, llamadas, entrada, caché,
-   salida, razonamiento y costo.
-2. **Por modelo + effort:** llamadas y consumo para cada nivel de razonamiento del modelo.
-3. **Por herramienta:** proveedor, sesiones y consumo; debajo, el detalle por herramienta y modelo.
-4. **Por día:** tokens de cada herramienta por día.
-5. **Proyectos:** las 10 carpetas con más entrada, con hasta 5 modelos y sus efforts debajo, sangrados.
-6. **Límites y avisos:** cuotas de Codex y herramientas sin historial o archivos ilegibles; aparecen al final con cualquier vista.
+```
+Consumo de IA · últimos 7 días (desde 18/11 16:46)
 
-Sin `--por` salen todas las secciones en ese orden. Con `--proyecto`, el encabezado indica el filtro y todas las cifras
-corresponden solo a los proyectos coincidentes; el JSON incluye `filtro: { proyecto: "texto" }` (o `null` sin filtro).
+Por modelo
 
-El reporte HTML muestra lo mismo con tarjetas de totales, barras por día, el reparto por herramienta y los límites. Se
-abre con doble clic, funciona sin internet y se adapta al teléfono.
+Modelo            | Herramientas | Sesiones | Llamadas | Entrada |  Caché | Salida | Razon. | Costo US$
+claude-opus-5-5   | Claude Code  |       10 |      600 |  100.0M |  98.0M | 500.0k | 200.0k |         —
+big-pickle        | OpenCode     |       30 |      400 |   25.0M |  22.0M | 100.0k | 170.0k |      0.00
+gpt-6.1-sol       | Codex        |        7 |      110 |    6.0M |   5.6M | 120.0k |  38.0k |         —
+
+Límites
+
+Codex (plan team): 10 % de la ventana de 5 h (se renueva 21:22) · 9 % semanal (se renueva 27/11 16:40)
+```
+
+### Qué muestra cada vista
+
+Sin `--por` salen todas, en este orden; con `--por <vista>` solo esa. Límites y avisos salen siempre al final.
+
+1. **`modelo`:** suma el mismo modelo aunque se use desde varias herramientas; herramientas, sesiones, llamadas,
+   entrada, caché, salida, razonamiento y costo.
+2. **`effort`:** cada modelo separado por nivel de razonamiento (`low`, `medium`, `high`, `xhigh`…).
+3. **`herramienta`:** proveedor, sesiones y consumo; debajo, el detalle por modelo.
+4. **`dia`:** tokens de cada herramienta por día.
+5. **`proyecto`:** las 10 carpetas con más consumo, con hasta 5 modelos y su effort debajo.
+
+Con `--proyecto`, el encabezado indica el filtro y todas las cifras (también en JSON y HTML) son solo de los proyectos
+cuyo nombre contiene ese texto, sin distinguir mayúsculas.
+
+El reporte HTML muestra todo junto: tarjetas de totales, barras por día, porcentaje por herramienta y por modelo,
+tablas por modelo y effort, por herramienta y por proyecto, y los límites. Es un archivo que se abre con doble clic,
+funciona sin internet y se adapta al teléfono.
 
 ## Qué lee
 
@@ -100,6 +143,16 @@ carpeta base (sirve para pruebas).
 
 **¿El reporte consume tokens? No:** `telemetria` es un programa local que solo lee archivos; ni la terminal ni el HTML
 usan IA. Solo gastarías tokens si le pides a una IA que lo corra y lea la salida.
+
+**¿Tengo que correrlo dentro de un proyecto? No.** Mide toda la PC desde cualquier carpeta; para uno solo, usa
+`--proyecto` (ver [arriba](#tengo-que-estar-en-la-carpeta-del-proyecto)).
+
+**¿Mide lo que hacen los agentes del orquestador?** Sí. Lo que corren OpenCode, Codex, agy y Gemini CLI queda en sus
+propios historiales; Qwen, Qoder y MiniMax se toman del registro de `orquestar-codex`. Sus consultas sueltas se agrupan
+como `(consultas del orquestador)` y sus worktrees cuentan como el repo.
+
+**¿Por qué Entrada es tan grande?** Porque incluye la caché: en cada turno el modelo vuelve a leer la conversación. La
+columna **Caché** muestra cuánto de eso salió de caché (más barato o gratis).
 
 ## Desarrollo
 
