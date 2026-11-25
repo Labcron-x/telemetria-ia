@@ -21,7 +21,7 @@ telemetria html --abrir                                    # lo mismo con gráfi
 ```
 
 `npm link` deja el comando `telemetria` disponible en cualquier carpeta y terminal (PowerShell, CMD o Git Bash).
-Si no quieres usarlo, llama al archivo con su ruta completa: `node D:uta	elemetria-iain	elemetria.js`.
+Si no quieres usarlo, llama al archivo con su ruta completa: `node D:\ruta\telemetria-ia\bin\telemetria.js`.
 
 ### ¿Tengo que estar en la carpeta del proyecto?
 
