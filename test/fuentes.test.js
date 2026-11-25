@@ -139,10 +139,12 @@ test('Todos los lectores entregan proyectos normalizados y el agregado reúne su
     assert.ok(resultado.registros.length > 0, lector.nombre);
     for (const r of resultado.registros) {
       assert.equal(r.proyecto, lector.nombre === 'Antigravity' ? null : '(consultas del orquestador)', r.herramienta);
+      assert.equal(r.effort, null, r.herramienta);
     }
   }
   const agregado = await recolectar({ home, dias: 1, ahora });
-  assert.deepEqual(agregado.proyectos, [{ proyecto: '(consultas del orquestador)', entrada: 27, salida: 0, mensajes: 7 }]);
+  assert.deepEqual(agregado.proyectos, [{ proyecto: '(consultas del orquestador)', entrada: 27, cache: 0, salida: 0, mensajes: 7,
+    modelos: [{ modelo: '?', effort: null, entrada: 27, salida: 0, mensajes: 7 }] }]);
   assert.equal(agregado.totales.mensajes, 8);
 });
 
@@ -160,10 +162,34 @@ test('Claude deduplica ids, suma caché y omite sintéticos, fechas y archivos a
   await fs.utimes(antiguo, new Date(0), new Date(0));
   const resultado = await leer('Claude Code');
   assert.equal(resultado.registros.length, 2);
-  assert.deepEqual(resultado.registros[0], { herramienta: 'Claude Code', proveedor: 'Anthropic', modelo: 'claude-test',
+  assert.deepEqual(resultado.registros[0], { herramienta: 'Claude Code', proveedor: 'Anthropic', modelo: 'claude-test', effort: null,
     fecha: ahora - 1000, entrada: 20, cache: 6, salida: 3, razonamiento: 2, costo: 0.25, sesion: 'c1', proyecto: path.normalize('/repo') });
   assert.match(resultado.aviso, /ilegibles/);
   assert.ok(!JSON.stringify(resultado).includes(secreto));
+});
+
+test('Claude usa perTurnEffort antes de effort y deja null cuando no hay dato', async t => {
+  const { escribir, leer } = await entorno(t);
+  await escribir('.claude/projects/effort/s.jsonl', [
+    { perTurnEffort: 'xhigh', effort: 'low' }, { effort: 'medium' },
+    { perTurnEffort: null, effort: 'high' }, {},
+  ].map((datos, i) => ({ ...datos, type: 'assistant', timestamp: iso(0),
+    message: { id: `m${i}`, model: 'claude-test', usage: { input_tokens: 1 } } })));
+  assert.deepEqual((await leer('Claude Code')).registros.map(r => r.effort), ['xhigh', 'medium', 'high', null]);
+});
+
+test('Codex conserva effort entre contadores y lo cambia o borra con cada turn_context y archivo', async t => {
+  const { escribir, leer } = await entorno(t);
+  const evento = entrada => ({ type: 'event_msg', timestamp: iso(0), payload: { type: 'token_count',
+    info: { total_token_usage: { input_tokens: entrada } } } });
+  const contexto = effort => ({ type: 'turn_context', payload: { model: 'modelo', ...effort } });
+  await escribir('.codex/sessions/rollout-a.jsonl', [contexto({ effort: 'high' }), evento(10), evento(20),
+    contexto({ effort: 'low' }), evento(30), contexto({}), evento(40)]);
+  await escribir('.codex/sessions/rollout-b.jsonl', [evento(1)]);
+  const r = await leer('Codex');
+  assert.deepEqual(r.registros.map(d => [d.modelo, d.effort, d.entrada]), [
+    ['modelo', 'high', 10], ['modelo', 'high', 10], ['modelo', 'low', 10], ['modelo', null, 10], ['?', null, 1],
+  ]);
 });
 
 test('Codex conserva la base anterior al periodo, cambia modelo y toma la última cuota entre archivos', async t => {
@@ -203,7 +229,7 @@ test('OpenCode consulta metadatos, filtra en SQL, suma costo y no exporta creden
   const datos = { role: 'assistant', modelID: 'modelo-o', providerID: 'opencode', content: secreto,
     cost: 0.15, tokens: { input: 10, output: 5, reasoning: 2, cache: { read: 3, write: 4 } } };
   insertar.run('1', 'o1', ahora - 1000, JSON.stringify(datos));
-  insertar.run('2', 'o1', ahora, JSON.stringify({ ...datos, providerID: 'otro', cost: 0 }));
+  insertar.run('2', 'o1', ahora, JSON.stringify({ ...datos, providerID: 'otro', cost: 0, variant: 'high' }));
   insertar.run('3', 'o1', ahora, JSON.stringify({ ...datos, role: 'user' }));
   insertar.run('4', 'o1', ahora - 2 * 86400000, JSON.stringify(datos));
   insertar.run('5', 'o1', ahora, JSON.stringify({ ...datos, tokens: {} }));
@@ -213,6 +239,7 @@ test('OpenCode consulta metadatos, filtra en SQL, suma costo y no exporta creden
   const r = await leer('OpenCode');
   assert.equal(r.aviso, null);
   assert.equal(r.registros.length, 2);
+  assert.deepEqual(r.registros.map(d => d.effort), [null, 'high']);
   assert.deepEqual(r.registros.map(d => [d.proveedor, d.entrada, d.cache, d.salida, d.razonamiento, d.costo, d.proyecto]),
     [['OpenCode Zen', 17, 3, 5, 2, 0.15, path.normalize('/opencode')], ['otro', 17, 3, 5, 2, 0, path.normalize('/opencode')]]);
   const a = await recolectar({ home, dias: 1, ahora });
@@ -223,7 +250,7 @@ test('OpenCode consulta metadatos, filtra en SQL, suma costo y no exporta creden
 test('Gemini conserva la última actualización por id y admite JSON antiguo y proyecto', async t => {
   const { escribir, leer } = await entorno(t);
   await escribir('.gemini/tmp/hash/.project_root', '/gemini\n');
-  const mensaje = { id: 'g1', timestamp: iso(-1000), type: 'gemini', model: 'gemini-test', content: secreto,
+  const mensaje = { id: 'g1', timestamp: iso(-1000), type: 'gemini', model: 'gemini-test', content: secreto, effort: 'high',
     tokens: { input: 20, cached: 5, output: 4, thoughts: 2, tool: 99 } };
   await escribir('.gemini/tmp/hash/chats/session-a.jsonl', [{ sessionId: 'g' }, mensaje,
     { ...mensaje, tokens: { ...mensaje.tokens, input: 30 } }, { $set: mensaje }, { $rewindTo: 'g1' },
@@ -232,6 +259,7 @@ test('Gemini conserva la última actualización por id y admite JSON antiguo y p
   const r = await leer('Gemini CLI');
   assert.equal(r.aviso, null);
   assert.equal(r.registros.length, 2);
+  assert.ok(r.registros.every(d => d.effort === null));
   const actual = r.registros.find(d => d.sesion === 'g');
   assert.equal(actual.entrada, 30);
   assert.equal(actual.cache, 5);
@@ -270,14 +298,25 @@ test('Gemini continúa después de un elemento dañado del JSON antiguo', async 
   assert.match(r.aviso, /ilegibles/);
 });
 
+test('Antigravity extrae solo los sufijos de effort permitidos y conserva el modelo completo', async t => {
+  const { escribir, leer } = await entorno(t);
+  const modelos = ['minimal', 'low', 'medium', 'high', 'xhigh'].map(e => `gemini-test-${e}`)
+    .concat(['gemini-test', 'gemini-test-high-preview', 'gemini-test-max']);
+  await escribir('.gemini/antigravity/brain/effort/.system_generated/logs/transcript_full.jsonl',
+    modelos.map((model, step_index) => ({ model, step_index, created_at: iso(0), input_tokens: 1, effort: 'ignorar' })));
+  assert.deepEqual((await leer('Antigravity')).registros.map(r => [r.modelo, r.effort]),
+    modelos.map((m, i) => [m, ['minimal', 'low', 'medium', 'high', 'xhigh'][i] ?? null]));
+});
+
 test('Orquestadores incluye solo qwen, qoder y mcode y respeta off', async t => {
   const { escribir, leer } = await entorno(t);
-  const dato = { fecha: iso(-1000), repo: '/repo', id: 't1', modelo: 'prueba', entrada: 8,
+  const dato = { fecha: iso(-1000), repo: '/repo', id: 't1', modelo: 'prueba', effort: 'high', entrada: 8,
     cache: 3, salida: 2, razonamiento: 1, costo: 0.1 };
   await escribir('.local/share/orquestar-codex/consumo.jsonl', ['qwen', 'qoder', 'mcode', 'agy', 'opencode', 'gemini-cli', 'codex']
     .map(agente => ({ ...dato, agente })).concat([{ ...dato, agente: 'qwen', sin_datos: true },
       { ...dato, agente: 'qwen', fecha: iso(-2 * 86400000) }]));
   const r = await leer('Orquestadores');
+  assert.ok(r.registros.every(d => d.effort === null));
   assert.deepEqual(r.registros.map(d => [d.herramienta, d.proveedor, d.sesion]), [
     ['Qwen Code', 'Alibaba (Qwen)', '/repo/t1'], ['Qoder', 'Qoder', '/repo/t1'], ['MiniMax Code', 'MiniMax', '/repo/t1']]);
   process.env.ORQ_CONSUMO = 'off';

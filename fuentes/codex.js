@@ -6,13 +6,15 @@ module.exports = lector('Codex', async (ctx, home) => {
   let ultimaCuota = -Infinity;
   const raiz = path.join(process.env.CODEX_HOME || path.join(home, '.codex'), 'sessions');
   for (const ruta of await archivos(raiz, r => /^rollout-.*\.jsonl$/.test(path.basename(r)), ctx)) {
-    let sesion = path.basename(ruta, '.jsonl'), proyecto = null, modelo = '?';
+    let sesion = path.basename(ruta, '.jsonl'), proyecto = null, modelo = '?', effort = null;
     let anterior = {};
     await lineas(ruta, /"(?:session_meta|turn_context|token_count)"/, ctx, dato => {
       const p = dato.payload;
       if (!p) return;
       if (dato.type === 'session_meta') { sesion = p.id || sesion; proyecto = p.cwd || proyecto; return; }
-      if (dato.type === 'turn_context') { modelo = p.model || '?'; proyecto = p.cwd || proyecto; return; }
+      if (dato.type === 'turn_context') {
+        modelo = p.model || '?'; effort = p.effort ?? null; proyecto = p.cwd || proyecto; return;
+      }
       if (dato.type !== 'event_msg' || p.type !== 'token_count') return;
       const instante = fecha(dato.timestamp);
       if (Number.isFinite(instante) && instante >= ctx.desde && p.rate_limits && instante >= ultimaCuota) {
@@ -33,7 +35,7 @@ module.exports = lector('Codex', async (ctx, home) => {
         salida: diferencia('output_tokens'), razonamiento: diferencia('reasoning_output_tokens') };
       anterior = uso;
       if (!Number.isFinite(instante) || instante < ctx.desde || !Object.values(datos).some(v => v > 0)) return;
-      ctx.registros.push(registro('Codex', 'OpenAI', { ...datos, modelo, fecha: instante, sesion, proyecto }));
+      ctx.registros.push(registro('Codex', 'OpenAI', { ...datos, modelo, effort, fecha: instante, sesion, proyecto }));
     });
   }
 });

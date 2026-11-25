@@ -13,7 +13,7 @@ function fecha(valor) {
   return typeof valor === 'string' ? Date.parse(valor) : NaN;
 }
 function registro(herramienta, proveedor, datos = {}) {
-  return { herramienta, proveedor, modelo: '?', fecha: NaN, entrada: 0, cache: 0,
+  return { herramienta, proveedor, modelo: '?', effort: null, fecha: NaN, entrada: 0, cache: 0,
     salida: 0, razonamiento: 0, costo: null, sesion: '', proyecto: null, ...datos };
 }
 

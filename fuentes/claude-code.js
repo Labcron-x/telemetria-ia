@@ -15,7 +15,7 @@ module.exports = lector('Claude Code', async (ctx, home) => {
       vistos.add(mensaje.id);
       const uso = mensaje.usage;
       ctx.registros.push(registro('Claude Code', 'Anthropic', {
-        modelo: mensaje.model || '?', fecha: instante,
+        modelo: mensaje.model || '?', effort: dato.perTurnEffort ?? dato.effort ?? null, fecha: instante,
         entrada: n(uso.input_tokens) + n(uso.cache_creation_input_tokens) + n(uso.cache_read_input_tokens),
         cache: n(uso.cache_read_input_tokens), salida: n(uso.output_tokens),
         razonamiento: n(uso.output_tokens_details?.thinking_tokens), costo: costo(dato.costUSD),
