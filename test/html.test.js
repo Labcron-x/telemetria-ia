@@ -73,7 +73,7 @@ test('muestra herramientas, modelos, totales y números en ambos formatos', () =
     assert.ok(html.includes(texto), `falta ${texto}`);
   }
   for (const columna of ['Herramienta', 'Proveedor', 'Modelo', 'Llamadas', 'Entrada', 'Caché', 'Salida', 'Razonamiento', 'Costo', 'Proyecto']) {
-    assert.ok(html.includes(`>${columna}</th>`), `falta columna ${columna}`);
+    assert.ok(html.includes(`${columna}</th>`), `falta columna ${columna}`);
   }
   assert.ok(html.includes('53.063'));
   assert.ok(html.includes('80k'));
@@ -143,4 +143,32 @@ test('todo el historial y costo nulo', () => {
   assert.ok(html.includes('Todo el historial'));
   assert.ok(html.includes('—'));
   assert.ok(!html.includes('US$ 1,50'));
+});
+
+test('diseño flexible a 390 px: tarjetas, SVG y barras', () => {
+  const html = generarHtml(ejemplo());
+  assert.match(html, /repeat\(auto-fill, minmax\(140px, 1fr\)\)/);
+  assert.match(html, /html, body \{ min-width: 0; \}/);
+  assert.match(html, /<svg class="grafico" viewBox="0 0 \d+ \d+"/);
+  assert.match(html, /\.grafico \{ display: block; width: 100%; max-width: 100%; height: auto; \}/);
+  assert.match(html, /\.reparto li \{ display: flex;/);
+  assert.match(html, /\.barra \{ flex: 1 1 auto; min-width: 0;/);
+  assert.ok(!html.includes('minmax(120px'));
+});
+
+test('tablas con scroll propio, proyecto que parte y números fijos', () => {
+  const html = generarHtml(ejemplo());
+  assert.match(html, /\.scroll \{ overflow-x: auto; max-width: 100%; min-width: 0; \}/);
+  assert.equal((html.match(/class="scroll"><table/g) ?? []).length, 2);
+  assert.match(html, /\.num \{ text-align: right; white-space: nowrap;/);
+  assert.match(html, /<th scope="row" class="proyecto">/);
+  assert.match(html, /\.proyecto \{ overflow-wrap: anywhere;/);
+  assert.ok(html.includes('class="num">53.063'));
+});
+
+test('filas de modelo con sangrado CSS y sin flecha', () => {
+  const html = generarHtml(ejemplo());
+  assert.ok(!html.includes('↳'));
+  assert.match(html, /\.fila-modelo \.modelo \{ padding-left: 1\.4rem; \}/);
+  assert.match(html, /<tr class="fila-modelo"><th scope="row"><\/th><td>—<\/td><td class="modelo">/);
 });
