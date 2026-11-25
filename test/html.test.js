@@ -169,6 +169,6 @@ test('tablas con scroll propio, proyecto que parte y números fijos', () => {
 test('filas de modelo con sangrado CSS y sin flecha', () => {
   const html = generarHtml(ejemplo());
   assert.ok(!html.includes('↳'));
-  assert.match(html, /\.fila-modelo \.modelo \{ padding-left: 1\.4rem; \}/);
+  assert.match(html, /\.fila-modelo \.modelo \{ padding-left: 1\.4rem;[^}]*white-space: nowrap; \}/);
   assert.match(html, /<tr class="fila-modelo"><th scope="row"><\/th><td>—<\/td><td class="modelo">/);
 });
