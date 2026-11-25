@@ -1,0 +1,10 @@
+{
+  "name": "telemetria-ia",
+  "version": "0.1.0",
+  "description": "Consumo de IA en tu PC por herramienta, proveedor y modelo (Claude Code, Codex, OpenCode, Gemini CLI, Antigravity y orquestadores)",
+  "bin": { "telemetria": "bin/telemetria.js" },
+  "scripts": { "test": "node --test" },
+  "engines": { "node": ">=22.13" },
+  "license": "UNLICENSED",
+  "private": true
+}
